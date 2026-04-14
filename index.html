@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Криптосистема Эль-Гамаля</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f5f5f7; color: #1d1d1f; padding: 20px; max-width: 900px; margin: 0 auto; }
+    h1 { text-align: center; font-weight: 500; }
+    .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .form-group { margin-bottom: 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+    label { font-weight: 500; min-width: 150px; }
+    input, select { padding: 8px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; }
+    button { background-color: #0071e3; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+    button:hover { background-color: #005bb5; }
+    button:disabled { background-color: #a1c4fd; cursor: not-allowed; }
+    .log-box { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 15px; border-radius: 8px; height: 250px; overflow-y: auto; white-space: pre; font-size: 13px; margin-top: 15px; }
+    .danger { color: #e30000; font-size: 12px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h1>Алгоритм Эль-Гамаля</h1>
+
+<div class="card">
+  <h3>1. Генерация ключей</h3>
+  <div class="form-group">
+    <label>Простое число p (p > 255):</label>
+    <input type="number" id="input-p" placeholder="">
+    <button onclick="findRoots()">Найти корни</button>
+  </div>
+  <div class="form-group">
+    <label>Первообразный корень g:</label>
+    <select id="select-g"></select>
+  </div>
+  <div class="form-group">
+    <label>Закрытый ключ x (1 < x < p-1):</label>
+    <input type="number" id="input-x" placeholder="Секретное число">
+    <button onclick="computeY()">Вычислить y</button>
+  </div>
+  <div class="form-group">
+    <label>Открытый ключ y:</label>
+    <input type="text" id="output-y" readonly style="background: #f0f0f0;">
+  </div>
+</div>
+
+<div class="card">
+  <h3>2. Шифрование / Дешифрование файлов</h3>
+  <div class="form-group">
+    <label>Стартовое k (НОД(k, p-1)=1) и 1 < k < p - 1:</label>
+    <input type="number" id="input-k" placeholder="Только для шифрования" style="width: 23%;">
+
+  </div>
+  <div class="form-group" style="align-items: flex-start;">
+    <div style="flex: 1;">
+      <h4>Шифрование</h4>
+      <input type="file" id="file-encrypt" style="margin-bottom: 10px; width: 70%;">
+      <button onclick="processFile('encrypt')" id="btn-enc">Зашифровать файл</button>
+    </div>
+    <div style="flex: 1;">
+      <h4>Дешифрование</h4>
+      <input type="file" id="file-decrypt" style="margin-bottom: 10px; width: 70%;">
+      <button onclick="processFile('decrypt')" id="btn-dec" style="background-color: #34c759;">Расшифровать файл</button>
+    </div>
+  </div>
+  <div id="log" class="log-box">Ожидание действий...</div>
+</div>
+
+<script>
+  // --- Криптографическая математика (используем BigInt для точности) ---
+  function gcd(a, b) {
+    while (b !== 0n) { let temp = b; b = a % b; a = temp; }
+    return a;
+  }
+
+  function fastExp(base, exp, mod) {
+    let res = 1n;
+    base = BigInt(base) % BigInt(mod);
+    exp = BigInt(exp);
+    mod = BigInt(mod);
+    while (exp > 0n) {
+      if (exp % 2n === 1n) res = (res * base) % mod;
+      exp = exp / 2n;
+      base = (base * base) % mod;
+    }
+    return res;
+  }
+
+  function isPrime(n) {
+    n = BigInt(n);
+    if (n <= 1n) return false;
+    if (n <= 3n) return true;
+    if (n % 2n === 0n) return false;
+    let d = n - 1n;
+    let s = 0n;
+    while (d % 2n === 0n) { d /= 2n; s++; }
+    for (let i = 0; i < 5; i++) {
+      let a = BigInt(Math.floor(Math.random() * (Number(n) - 3)) + 2);
+      let x = fastExp(a, d, n);
+      if (x === 1n || x === n - 1n) continue;
+      let composite = true;
+      for (let r = 1n; r < s; r++) {
+        x = (x * x) % n;
+        if (x === n - 1n) { composite = false; break; }
+      }
+      if (composite) return false;
+    }
+    return true;
+  }
+
+  function primeFactors(n) {
+    n = BigInt(n);
+    let factors = [];
+    let d = 2n;
+    while (d * d <= n) {
+      if (n % d === 0n) {
+        factors.push(d);
+        while (n % d === 0n) n /= d;
+      }
+      d++;
+    }
+    if (n > 1n) factors.push(n);
+    return factors;
+  }
+
+  // --- UI Логика ---
+  function logMsg(msg, clear = false) {
+    const logBox = document.getElementById('log');
+    if (clear) logBox.textContent = '';
+    logBox.textContent += msg + '\n';
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function findRoots() {
+    const pVal = parseInt(document.getElementById('input-p').value);
+    if (isNaN(pVal) || pVal < 2) return alert("Введите корректное p > 1");
+    if (!isPrime(pVal)) return alert("Число p должно быть простым!");
+
+    const p = BigInt(pVal);
+    const phi = p - 1n;
+    const factors = primeFactors(phi);
+
+    let g0 = -1n;
+    for (let i = 2n; i < p; i++) {
+      let isPrimitive = true;
+      for (let q of factors) {
+        if (fastExp(i, phi / q, p) === 1n) { isPrimitive = false; break; }
+      }
+      if (isPrimitive) { g0 = i; break; }
+    }
+
+    if (g0 === -1n) return alert("Не удалось найти первообразный корень.");
+
+    let coprimes = [];
+    for (let k = 1n; k < phi; k++) {
+      if (gcd(k, phi) === 1n) coprimes.push(k);
+    }
+
+    let roots = new Set();
+    for (let k of coprimes) roots.add(fastExp(g0, k, p));
+
+    let sortedRoots = Array.from(roots).sort((a, b) => Number(a) - Number(b));
+
+    const select = document.getElementById('select-g');
+    select.innerHTML = '';
+    sortedRoots.forEach(r => {
+      let opt = document.createElement('option');
+      opt.value = r.toString();
+      opt.text = r.toString();
+      select.appendChild(opt);
+    });
+
+    let factorsStr = factors.map(f => f.toString()).join(', ');
+    logMsg(`Найдено ${sortedRoots.length} первообразных корней для p=${pVal}`, true);
+    logMsg(`Простые делители p-1 = ${p-1n}: ${factorsStr}`);
+  }
+
+  function computeY() {
+    const p = BigInt(document.getElementById('input-p').value);
+    const g = BigInt(document.getElementById('select-g').value);
+    const x = BigInt(document.getElementById('input-x').value);
+
+    if (!p || !g || !x) return alert("Заполните p, g и x");
+    if (x <= 1n || x >= p - 1n) return alert(`Закрытый ключ x должен быть между 1 и ${p-1n}`);
+
+    const y = fastExp(g, x, p);
+    document.getElementById('output-y').value = y.toString();
+    logMsg(`Вычислен открытый ключ y = ${y}`);
+  }
+
+  async function processFile(mode) {
+    const p = BigInt(document.getElementById('input-p').value);
+    const x = BigInt(document.getElementById('input-x').value);
+
+    if (!p) return alert("Введите p");
+
+    if (mode === 'encrypt') {
+      const g = BigInt(document.getElementById('select-g').value);
+      const y = BigInt(document.getElementById('output-y').value);
+      const first_k = BigInt(document.getElementById('input-k').value);
+      const fileInput = document.getElementById('file-encrypt');
+
+      if (!fileInput.files.length) return alert("Выберите файл для шифрования");
+      if (!g || !y || !first_k) return alert("Сгенерируйте ключи и введите k");
+      if (first_k <= 1n || first_k >= p - 1n || gcd(first_k, p - 1n) !== 1n) return alert("Некорректное k");
+      if (p <= 255n) return alert("Для шифрования файлов p должно быть строго больше 255!");
+
+      const file = fileInput.files[0];
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      logMsg(`\nНачато шифрование файла: ${file.name} (${bytes.length} байт)`);
+
+      // Генерация пула уникальных k
+      let phi = p - 1n;
+      let possibleKs = [];
+      for (let i = 2n; i < phi; i++) {
+        if (gcd(i, phi) === 1n && i !== first_k) possibleKs.push(i);
+      }
+      if (possibleKs.length < bytes.length - 1) return alert("Не хватает уникальных k для данного размера файла при текущем p!");
+
+      // Перемешивание пула k
+      for (let i = possibleKs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [possibleKs[i], possibleKs[j]] = [possibleKs[j], possibleKs[i]];
+      }
+
+      // Формат совместимости с Python: пары 32-битных unsigned int
+      const outBuffer = new ArrayBuffer(bytes.length * 8);
+      const view = new DataView(outBuffer);
+
+      for (let i = 0; i < bytes.length; i++) {
+        let m = BigInt(bytes[i]);
+        let current_k = (i === 0) ? first_k : possibleKs[i - 1];
+
+        // Формулы шифрования a = g^k mod p, b = y^k * m mod p
+        let a = fastExp(g, current_k, p);
+        let yk = fastExp(y, current_k, p);
+        let b = (yk * m) % p;
+
+        view.setUint32(i * 8, Number(a), true); // true = little endian
+        view.setUint32(i * 8 + 4, Number(b), true);
+
+        if (i < 20 || i === bytes.length - 1) {
+          logMsg(`Байт ${i}: m=${m} | k=${current_k} -> a=${a}, b=${b}`);
+        } else if (i === 20) {
+          logMsg(`... шифрование остальных ${bytes.length - 20} байт ...`);
+        }
+      }
+
+      // Добавляем enc. в начало, исходное расширение оставляем
+      let encFileName = 'enc.' + file.name;
+      downloadBlob(outBuffer, encFileName);
+      logMsg("Шифрование завершено успешно!");
+
+    } else if (mode === 'decrypt') {
+      if (!x) return alert("Для дешифрования нужен закрытый ключ x");
+      const fileInput = document.getElementById('file-decrypt');
+      if (!fileInput.files.length) return alert("Выберите файл для дешифрования");
+
+      const file = fileInput.files[0];
+      const buffer = await file.arrayBuffer();
+      const view = new DataView(buffer);
+      const pairCount = buffer.byteLength / 8;
+
+      const outBytes = new Uint8Array(pairCount);
+      const exponent = p - 1n - x; // a^{-x} mod p = a^{p-1-x} mod p
+
+      logMsg(`\nНачато дешифрование файла: ${file.name} (${pairCount} пар)`);
+
+      for (let i = 0; i < pairCount; i++) {
+        let a = BigInt(view.getUint32(i * 8, true));
+        let b = BigInt(view.getUint32(i * 8 + 4, true));
+
+        // Формула дешифрования m = b * a^{-x} mod p
+        let a_pow = fastExp(a, exponent, p);
+        let m = (b * a_pow) % p;
+
+        outBytes[i] = Number(m);
+
+        if (i < 20 || i === pairCount - 1) {
+          logMsg(`Пара ${i}: a=${a}, b=${b} -> m=${m}`);
+        } else if (i === 20) {
+          logMsg(`... дешифрование остальных ${pairCount - 20} пар ...`);
+        }
+      }
+
+      let originalName = file.name.replace(/^enc\./i, ''); // убираем enc. из начала
+      let decFileName = 'dec.' + originalName;
+      downloadBlob(outBytes.buffer, decFileName);
+      logMsg("Дешифрование завершено успешно!");
+    }
+  }
+
+  function downloadBlob(buffer, filename) {
+    const blob = new Blob([buffer], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+</script>
+</body>
+</html>
