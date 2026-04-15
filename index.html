@@ -67,23 +67,51 @@
 </div>
 
 <script>
-  // --- Криптографическая математика (используем BigInt для точности) ---
+  // --- Криптографическая математика  ---
   function gcd(a, b) {
     while (b !== 0n) { let temp = b; b = a % b; a = temp; }
     return a;
   }
+  // Расширенный алгоритм Евклида
+  function euclidEx(a, b) {
+    let d0 = BigInt(a);
+    let d1 = BigInt(b);
+    let x0 = 1n;
+    let x1 = 0n;
+    let y0 = 0n;
+    let y1 = 1n;
 
-  function fastExp(base, exp, mod) {
-    let res = 1n;
-    base = BigInt(base) % BigInt(mod);
-    exp = BigInt(exp);
-    mod = BigInt(mod);
-    while (exp > 0n) {
-      if (exp % 2n === 1n) res = (res * base) % mod;
-      exp = exp / 2n;
-      base = (base * base) % mod;
+    while (d1 > 1n) {
+      let q = d0 / d1;
+      let d2 = d0 % d1;
+      let x2 = x0 - q * x1;
+      let y2 = y0 - q * y1;
+
+      d0 = d1; d1 = d2;
+      x0 = x1; x1 = x2;
+      y0 = y1; y1 = y2;
     }
-    return res;
+
+    // Возвращаем объект со всеми коэффициентами, как в (x1; y1; d1)
+    return { x: x1, y: y1, d: d1 };
+  }
+  function fastExp(a, z, n) {
+    let a1 = BigInt(a);
+    let z1 = BigInt(z);
+    let x = 1n;
+    let mod = BigInt(n);
+
+    while (z1 !== 0n) {
+      // Внутренний цикл: пока степень четная, "схлопываем" её делением на 2
+      while (z1 % 2n === 0n) {
+        z1 = z1 / 2n;
+        a1 = (a1 * a1) % mod;
+      }
+      // Как только степень стала нечетной (или была такой изначально)
+      z1 = z1 - 1n;
+      x = (x * a1) % mod;
+    }
+    return x;
   }
 
   function isPrime(n) {
@@ -264,7 +292,7 @@
       const pairCount = buffer.byteLength / 8;
 
       const outBytes = new Uint8Array(pairCount);
-      const exponent = p - 1n - x; // a^{-x} mod p = a^{p-1-x} mod p
+      //const exponent = p - 1n - x; // a^{-x} mod p = a^{p-1-x} mod p
 
       logMsg(`\nНачато дешифрование файла: ${file.name} (${pairCount} пар)`);
 
@@ -272,9 +300,20 @@
         let a = BigInt(view.getUint32(i * 8, true));
         let b = BigInt(view.getUint32(i * 8 + 4, true));
 
-        // Формула дешифрования m = b * a^{-x} mod p
-        let a_pow = fastExp(a, exponent, p);
-        let m = (b * a_pow) % p;
+
+        // Считаем общий секрет K = a^x mod p
+        let k = fastExp(a, x, p);
+
+        // Находим обратный элемент K^-1 mod p с помощью Евклида
+        let res = euclidEx(k, p);
+
+        // так как res.x может быть отрицательным,
+        // приводим его к положительному числу по модулю p
+        let k_inv = (res.x % p + p) % p;
+
+        // m = b * K^-1 mod p
+        let m = (b * k_inv) % p;
+        // ---------------------------------
 
         outBytes[i] = Number(m);
 
