@@ -269,10 +269,10 @@
         view.setUint32(i * 8, Number(a), true); // true = little endian
         view.setUint32(i * 8 + 4, Number(b), true);
 
-        if (i < 20 || i === bytes.length - 1) {
+        if (i < 7 || i === bytes.length - 1) {
           logMsg(`Байт ${i}: m=${m} | k=${current_k} -> a=${a}, b=${b}`);
-        } else if (i === 20) {
-          logMsg(`... шифрование остальных ${bytes.length - 20} байт ...`);
+        } else if (i === 7) {
+          logMsg(`... шифрование остальных ${bytes.length - 7} байт ...`);
         }
       }
 
@@ -323,10 +323,10 @@
 
         outBytes[i] = Number(m);
 
-        if (i < 20 || i === pairCount - 1) {
+        if (i < 7 || i === pairCount - 1) {
           logMsg(`Пара ${i}: a=${a}, b=${b} -> m=${m}`);
-        } else if (i === 20) {
-          logMsg(`... дешифрование остальных ${pairCount - 20} пар ...`);
+        } else if (i === 7) {
+          logMsg(`... дешифрование остальных ${pairCount - 7} пар ...`);
         }
       }
 
