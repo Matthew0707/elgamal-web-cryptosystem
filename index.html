@@ -279,7 +279,13 @@
       // Добавляем enc. в начало, исходное расширение оставляем
       let encFileName = 'enc.' + file.name;
       downloadBlob(outBuffer, encFileName);
-      logMsg("Шифрование завершено успешно!");
+      // Вычисляем размер в килобайтах для наглядности (опционально)
+      const fileSizeEnc = (outBuffer.byteLength / 1024).toFixed(2);
+
+// Добавляем инфо в лог
+      logMsg(`Шифрование завершено успешно!`);
+      logMsg(`Файл сохранен как: ${encFileName}`);
+      logMsg(`Размер зашифрованного файла: ${outBuffer.byteLength} байт (~${fileSizeEnc} КБ)`);
 
     } else if (mode === 'decrypt') {
       if (!x) return alert("Для дешифрования нужен закрытый ключ x");
@@ -327,7 +333,12 @@
       let originalName = file.name.replace(/^enc\./i, ''); // убираем enc. из начала
       let decFileName = 'dec.' + originalName;
       downloadBlob(outBytes.buffer, decFileName);
-      logMsg("Дешифрование завершено успешно!");
+      // Вычисляем размер расшифрованного массива
+      const fileSizeDec = (outBytes.buffer.byteLength / 1024).toFixed(2);
+
+      logMsg(`Дешифрование завершено успешно!`);
+      logMsg(`Файл сохранен как: ${decFileName}`);
+      logMsg(`Размер расшифрованного файла: ${outBytes.buffer.byteLength} байт (~${fileSizeDec} КБ)`);
     }
   }
 
