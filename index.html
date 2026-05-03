@@ -163,7 +163,7 @@
     const pVal = parseInt(document.getElementById('input-p').value);
     if (isNaN(pVal) || pVal < 2) return alert("Введите корректное p > 1");
     if (!isPrime(pVal)) return alert("Число p должно быть простым!");
-
+    if (pVal <= 255) return alert("Число p должно быть больше 255!");
     const p = BigInt(pVal);
     const phi = p - 1n;
     const factors = primeFactors(phi);
