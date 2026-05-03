@@ -15,6 +15,7 @@
     button:hover { background-color: #005bb5; }
     button:disabled { background-color: #a1c4fd; cursor: not-allowed; }
     .log-box { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 15px; border-radius: 8px; height: 250px; overflow-y: auto; white-space: pre; font-size: 13px; margin-top: 15px; }
+    .danger { color: #e30000; font-size: 12px; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -25,7 +26,7 @@
   <h3>1. Генерация ключей</h3>
   <div class="form-group">
     <label>Простое число p (p > 255):</label>
-    <input type="number" id="input-p" placeholder="Например: 56393">
+    <input type="number" id="input-p" placeholder="">
     <button onclick="findRoots()">Найти корни</button>
   </div>
   <div class="form-group">
@@ -46,8 +47,9 @@
 <div class="card">
   <h3>2. Шифрование / Дешифрование файлов</h3>
   <div class="form-group">
-    <label>Стартовое k (НОД(k, p-1)=1):</label>
-    <input type="number" id="input-k" placeholder="Напр. 2" style="width: 23%;">
+    <label>Стартовое k (НОД(k, p-1)=1) и 1 < k < p - 1:</label>
+    <input type="number" id="input-k" placeholder="Только для шифрования" style="width: 23%;">
+
   </div>
   <div class="form-group" style="align-items: flex-start;">
     <div style="flex: 1;">
@@ -65,49 +67,60 @@
 </div>
 
 <script>
-  // --- Криптографическая математика ---
-
-  // Вычисление НОД
+  // --- Криптографическая математика  ---
   function gcd(a, b) {
     while (b !== 0n) { let temp = b; b = a % b; a = temp; }
     return a;
   }
-
-  // Расширенный алгоритм Евклида для поиска обратного элемента
+  // Расширенный алгоритм Евклида
   function euclidEx(a, b) {
-    let d0 = BigInt(a), d1 = BigInt(b);
-    let x0 = 1n, x1 = 0n;
+    let d0 = BigInt(a);
+    let d1 = BigInt(b);
+    let x0 = 1n;
+    let x1 = 0n;
+    let y0 = 0n;
+    let y1 = 1n;
+
     while (d1 > 1n) {
       let q = d0 / d1;
       let d2 = d0 % d1;
       let x2 = x0 - q * x1;
+      let y2 = y0 - q * y1;
+
       d0 = d1; d1 = d2;
       x0 = x1; x1 = x2;
+      y0 = y1; y1 = y2;
     }
-    return { x: x1, d: d1 };
-  }
 
-  // Быстрое возведение в степень по модулю
+    // Возвращаем объект со всеми коэффициентами, как в (x1; y1; d1)
+    return { x: x1, y: y1, d: d1 };
+  }
   function fastExp(a, z, n) {
-    let a1 = BigInt(a), z1 = BigInt(z), x = 1n, mod = BigInt(n);
+    let a1 = BigInt(a);
+    let z1 = BigInt(z);
+    let x = 1n;
+    let mod = BigInt(n);
+
     while (z1 !== 0n) {
+      // Внутренний цикл: пока степень четная, "схлопываем" её делением на 2
       while (z1 % 2n === 0n) {
         z1 = z1 / 2n;
         a1 = (a1 * a1) % mod;
       }
+      // Как только степень стала нечетной (или была такой изначально)
       z1 = z1 - 1n;
       x = (x * a1) % mod;
     }
     return x;
   }
 
-  // Проверка на простоту (Миллер-Рабин)
   function isPrime(n) {
     n = BigInt(n);
     if (n <= 1n) return false;
     if (n <= 3n) return true;
     if (n % 2n === 0n) return false;
-    let d = n - 1n, s = 0n;
+    let d = n - 1n;
+    let s = 0n;
     while (d % 2n === 0n) { d /= 2n; s++; }
     for (let i = 0; i < 5; i++) {
       let a = BigInt(Math.floor(Math.random() * (Number(n) - 3)) + 2);
@@ -123,10 +136,10 @@
     return true;
   }
 
-  // Факторизация числа
   function primeFactors(n) {
     n = BigInt(n);
-    let factors = [], d = 2n;
+    let factors = [];
+    let d = 2n;
     while (d * d <= n) {
       if (n % d === 0n) {
         factors.push(d);
@@ -138,18 +151,7 @@
     return factors;
   }
 
-  // Функция для последовательного поиска подходящего k
-  function getDeterministicK(start, phi) {
-    let k = BigInt(start);
-    while (gcd(k, phi) !== 1n) {
-      k++;
-      if (k >= phi) k = 2n; // Сброс в начало диапазона при переполнении
-    }
-    return k;
-  }
-
   // --- UI Логика ---
-
   function logMsg(msg, clear = false) {
     const logBox = document.getElementById('log');
     if (clear) logBox.textContent = '';
@@ -159,9 +161,11 @@
 
   function findRoots() {
     const pVal = parseInt(document.getElementById('input-p').value);
-    if (isNaN(pVal) || !isPrime(pVal) || pVal <= 255) return alert("Введите простое p > 255");
-
-    const p = BigInt(pVal), phi = p - 1n;
+    if (isNaN(pVal) || pVal < 2) return alert("Введите корректное p > 1");
+    if (!isPrime(pVal)) return alert("Число p должно быть простым!");
+    if (pVal <= 255) return alert("Число p должно быть больше 255!");
+    const p = BigInt(pVal);
+    const phi = p - 1n;
     const factors = primeFactors(phi);
 
     let g0 = -1n;
@@ -173,31 +177,40 @@
       if (isPrimitive) { g0 = i; break; }
     }
 
+    if (g0 === -1n) return alert("Не удалось найти первообразный корень.");
+
     let coprimes = [];
-    for (let k = 1n; k < phi && coprimes.length < 100; k++) {
+    for (let k = 1n; k < phi; k++) {
       if (gcd(k, phi) === 1n) coprimes.push(k);
     }
 
     let roots = new Set();
     for (let k of coprimes) roots.add(fastExp(g0, k, p));
 
+    let sortedRoots = Array.from(roots).sort((a, b) => Number(a) - Number(b));
+
     const select = document.getElementById('select-g');
     select.innerHTML = '';
-    Array.from(roots).sort((a, b) => Number(a) - Number(b)).forEach(r => {
+    sortedRoots.forEach(r => {
       let opt = document.createElement('option');
-      opt.value = r.toString(); opt.text = r.toString();
+      opt.value = r.toString();
+      opt.text = r.toString();
       select.appendChild(opt);
     });
 
-    logMsg(`Найдено корней (показано до 100) для p=${pVal}`, true);
-    logMsg(`Простые делители p-1: ${factors.join(', ')}`);
+    let factorsStr = factors.map(f => f.toString()).join(', ');
+    logMsg(`Найдено ${sortedRoots.length} первообразных корней для p=${pVal}`, true);
+    logMsg(`Простые делители p-1 = ${p-1n}: ${factorsStr}`);
   }
 
   function computeY() {
     const p = BigInt(document.getElementById('input-p').value);
     const g = BigInt(document.getElementById('select-g').value);
     const x = BigInt(document.getElementById('input-x').value);
-    if (x <= 1n || x >= p - 1n) return alert("x должен быть в диапазоне (1, p-1)");
+
+    if (!p || !g || !x) return alert("Заполните p, g и x");
+    if (x <= 1n || x >= p - 1n) return alert(`Закрытый ключ x должен быть между 1 и ${p-1n}`);
+
     const y = fastExp(g, x, p);
     document.getElementById('output-y').value = y.toString();
     logMsg(`Вычислен открытый ключ y = ${y}`);
@@ -206,86 +219,115 @@
   async function processFile(mode) {
     const p = BigInt(document.getElementById('input-p').value);
     const x = BigInt(document.getElementById('input-x').value);
+
     if (!p) return alert("Введите p");
 
     if (mode === 'encrypt') {
       const g = BigInt(document.getElementById('select-g').value);
       const y = BigInt(document.getElementById('output-y').value);
-      const start_k = BigInt(document.getElementById('input-k').value);
+      const first_k = BigInt(document.getElementById('input-k').value);
       const fileInput = document.getElementById('file-encrypt');
 
-      if (!fileInput.files.length || !g || !y) return alert("Проверьте ключи и файл");
+      if (!fileInput.files.length) return alert("Выберите файл для шифрования");
+      if (!g || !y || !first_k) return alert("Сгенерируйте ключи и введите k");
+      if (first_k <= 1n || first_k >= p - 1n || gcd(first_k, p - 1n) !== 1n) return alert("Некорректное k");
+      if (p <= 255n) return alert("Для шифрования файлов p должно быть строго больше 255!");
 
       const file = fileInput.files[0];
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
-      const phi = p - 1n;
 
-      logMsg(`\nНачато шифрование: ${file.name} (${bytes.length} байт)`);
+      logMsg(`\nНачато шифрование файла: ${file.name} (${bytes.length} байт)`);
 
+      // Генерация пула уникальных k
+      let phi = p - 1n;
+      let possibleKs = [];
+      for (let i = 2n; i < phi; i++) {
+        if (gcd(i, phi) === 1n && i !== first_k) possibleKs.push(i);
+      }
+      if (possibleKs.length < bytes.length - 1) return alert("Не хватает уникальных k для данного размера файла при текущем p!");
+
+      // Перемешивание пула k
+      for (let i = possibleKs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [possibleKs[i], possibleKs[j]] = [possibleKs[j], possibleKs[i]];
+      }
+
+      // Формат совместимости с Python: пары 32-битных unsigned int
       const outBuffer = new ArrayBuffer(bytes.length * 8);
       const view = new DataView(outBuffer);
-      let current_k = getDeterministicK(start_k, phi); // Проверка стартового k
 
       for (let i = 0; i < bytes.length; i++) {
         let m = BigInt(bytes[i]);
+        let current_k = (i === 0) ? first_k : possibleKs[i - 1];
 
-        // --- ЛОГИКА ВЫБОРА K (ЦИКЛ) ---
-        if (i > 0) {
-          // Ищем следующее подходящее число после предыдущего k
-          current_k = getDeterministicK(current_k + 1n, phi);
-        }
-
-        /*
-        // ВАРИАНТ С РАНДОМОМ (если нужно будет вернуть):
-        // let current_k = possibleKs[i]; // где possibleKs - перемешанный массив
-        */
-
-        // Шифрование по Эль-Гамалю: a = g^k, b = m * y^k[cite: 1]
+        // Формулы шифрования a = g^k mod p, b = y^k * m mod p
         let a = fastExp(g, current_k, p);
         let yk = fastExp(y, current_k, p);
         let b = (yk * m) % p;
 
-        view.setUint32(i * 8, Number(a), true);
+        view.setUint32(i * 8, Number(a), true); // true = little endian
         view.setUint32(i * 8 + 4, Number(b), true);
 
-        if (i < 5 || i === bytes.length - 1) {
+        if (i < 20 || i === bytes.length - 1) {
           logMsg(`Байт ${i}: m=${m} | k=${current_k} -> a=${a}, b=${b}`);
-        } else if (i === 5) {
-          logMsg(`... шифрование остальных ${bytes.length - 6} байт ...`);
+        } else if (i === 20) {
+          logMsg(`... шифрование остальных ${bytes.length - 20} байт ...`);
         }
       }
-      downloadBlob(outBuffer, 'enc.' + file.name);
-      logMsg("Шифрование завершено!");
+
+      // Добавляем enc. в начало, исходное расширение оставляем
+      let encFileName = 'enc.' + file.name;
+      downloadBlob(outBuffer, encFileName);
+      logMsg("Шифрование завершено успешно!");
 
     } else if (mode === 'decrypt') {
+      if (!x) return alert("Для дешифрования нужен закрытый ключ x");
       const fileInput = document.getElementById('file-decrypt');
-      if (!fileInput.files.length || !x) return alert("Нужен файл и закрытый ключ x");
+      if (!fileInput.files.length) return alert("Выберите файл для дешифрования");
 
       const file = fileInput.files[0];
       const buffer = await file.arrayBuffer();
       const view = new DataView(buffer);
       const pairCount = buffer.byteLength / 8;
-      const outBytes = new Uint8Array(pairCount);
 
-      logMsg(`\nНачато дешифрование: ${file.name}`);
+      const outBytes = new Uint8Array(pairCount);
+      //const exponent = p - 1n - x; // a^{-x} mod p = a^{p-1-x} mod p
+
+      logMsg(`\nНачато дешифрование файла: ${file.name} (${pairCount} пар)`);
 
       for (let i = 0; i < pairCount; i++) {
         let a = BigInt(view.getUint32(i * 8, true));
         let b = BigInt(view.getUint32(i * 8 + 4, true));
 
-        // m = b * (a^x)^-1 mod p[cite: 1]
-        let s = fastExp(a, x, p);
-        let s_inv = (euclidEx(s, p).x % p + p) % p;
-        let m = (b * s_inv) % p;
+
+        // Считаем общий секрет K = a^x mod p
+        let k = fastExp(a, x, p);
+
+        // Находим обратный элемент K^-1 mod p с помощью Евклида
+        let res = euclidEx(k, p);
+
+        // так как res.x может быть отрицательным,
+        // приводим его к положительному числу по модулю p
+        let k_inv = (res.x % p + p) % p;
+
+        // m = b * K^-1 mod p
+        let m = (b * k_inv) % p;
+        // ---------------------------------
 
         outBytes[i] = Number(m);
-        if (i < 5 || i === pairCount - 1) {
+
+        if (i < 20 || i === pairCount - 1) {
           logMsg(`Пара ${i}: a=${a}, b=${b} -> m=${m}`);
+        } else if (i === 20) {
+          logMsg(`... дешифрование остальных ${pairCount - 20} пар ...`);
         }
       }
-      downloadBlob(outBytes.buffer, 'dec.' + file.name.replace(/^enc\./i, ''));
-      logMsg("Дешифрование завершено!");
+
+      let originalName = file.name.replace(/^enc\./i, ''); // убираем enc. из начала
+      let decFileName = 'dec.' + originalName;
+      downloadBlob(outBytes.buffer, decFileName);
+      logMsg("Дешифрование завершено успешно!");
     }
   }
 
@@ -293,10 +335,14 @@
     const blob = new Blob([buffer], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 </script>
 </body>
 </html>
+
